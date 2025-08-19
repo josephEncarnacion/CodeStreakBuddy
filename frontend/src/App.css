@@ -1,0 +1,198 @@
+.App {
+  min-height: 100vh;
+  background: linear-gradient(180deg, #0f172a, #111827);
+  color: #e5e7eb;
+}
+
+.container {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 24px 16px 56px;
+}
+
+h1 {
+  margin: 0 0 16px;
+  font-size: 28px;
+  text-align: center;
+}
+
+section {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 16px;
+  margin: 16px 0;
+}
+
+.pet-card {
+  display: grid;
+  grid-template-columns: 96px 1fr;
+  grid-gap: 16px;
+  align-items: center;
+}
+
+.pet-emoji {
+  font-size: 64px;
+  line-height: 96px;
+  text-align: center;
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-gap: 8px 12px;
+}
+
+.checkin {
+  margin-top: 8px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: #22c55e;
+  color: #0a0f1e;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.checkin:disabled {
+  opacity: 0.7;
+  cursor: default;
+}
+
+.tip {
+  display: block;
+  opacity: 0.7;
+  margin-top: 6px;
+}
+
+.tasks-card h2 {
+  margin-top: 0;
+}
+
+.task-form {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.task-form input[type="text"] {
+  flex: 1;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.06);
+  color: #e5e7eb;
+}
+
+.task-form button {
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: #3b82f6;
+  color: white;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.empty {
+  opacity: 0.7;
+}
+
+.task-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.task-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 10px 12px;
+  border-radius: 10px;
+}
+
+.task-list li.done span {
+  text-decoration: line-through;
+  opacity: 0.7;
+}
+
+.task-list label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.badge {
+  background: #16a34a;
+  color: #0a0f1e;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+}
+
+footer {
+  text-align: center;
+  margin-top: 16px;
+  opacity: 0.7;
+}
+
+.github-card h2 {
+  margin-top: 0;
+}
+
+.github-input-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.github-input-row input[type="text"] {
+  flex: 1;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.06);
+  color: #e5e7eb;
+}
+
+.github-input-row button {
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: #6b7280;
+  color: white;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.github-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.gh-link {
+  color: #93c5fd;
+}
+
+.gh-chart-wrap {
+  display: grid;
+  place-items: center;
+}
+
+.gh-chart {
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  padding: 8px;
+}
