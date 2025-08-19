@@ -1,7 +1,7 @@
 import React from 'react';
 import './App.css';
 
-const STORAGE_KEY = 'csb_state_v2';
+const STORAGE_KEY = 'csb_state_v3';
 
 function getTodayString() {
   const now = new Date();
@@ -19,16 +19,15 @@ function daysBetween(dateA, dateB) {
   return Math.round(ms / (1000 * 60 * 60 * 24));
 }
 
-function getPetStageEmoji(xp) {
-  if (xp < 50) return '🐣'; // Baby
-  if (xp < 200) return '🦊'; // Teen
-  return '🐲'; // Adult
+function getPetStageEmoji(currentStreak) {
+  if (currentStreak < 7) return '🐣'; // Baby: 0-6 days
+  if (currentStreak < 21) return '🦊'; // Teen: 7-20 days
+  return '🐲'; // Adult: 21+ days
 }
 
 const initialState = {
   streak: { current: 0, longest: 0, lastCheckInDate: null },
-  xp: 0,
-  tasks: [], // { id, text, done, rewarded, date }
+  tasks: [], // { id, text, done, date }
   github: { username: '', lastSyncDate: null, lastResult: null }
 };
 
@@ -45,7 +44,7 @@ function App() {
       if (raw) {
         const loaded = JSON.parse(raw);
         const merged = { ...initialState, ...loaded };
-        // Backward compatibility from v1
+        // Backward compatibility
         if (!merged.github) merged.github = { username: '', lastSyncDate: null, lastResult: null };
         setState(merged);
         setGithubUsernameInput(merged.github.username || '');
@@ -79,8 +78,7 @@ function App() {
     const longest = Math.max(state.streak.longest, current);
     setState(s => ({
       ...s,
-      streak: { current, longest, lastCheckInDate: today },
-      xp: s.xp + 10
+      streak: { current, longest, lastCheckInDate: today }
     }));
   }
 
@@ -92,7 +90,6 @@ function App() {
       id: `${Date.now()}`,
       text,
       done: false,
-      rewarded: false,
       date: today
     };
     setState(s => ({ ...s, tasks: [newTask, ...s.tasks] }));
@@ -101,27 +98,120 @@ function App() {
 
   function toggleTask(taskId) {
     setState(s => {
-      let xpDelta = 0;
       const tasks = s.tasks.map(t => {
         if (t.id !== taskId) return t;
         const nowDone = !t.done;
-        let rewarded = t.rewarded;
-        if (nowDone && !rewarded) {
-          xpDelta += 2;
-          rewarded = true;
-        }
-        return { ...t, done: nowDone, rewarded };
+        return { ...t, done: nowDone };
       });
-      return { ...s, tasks, xp: s.xp + xpDelta };
+      return { ...s, tasks };
     });
   }
 
-  function sameDayLocal(dateIsoString, dayString) {
-    const d = new Date(dateIsoString);
+  function computeStreaksFromDates(activeDateSet) {
+    // longest streak over the set (assume up to 1 year)
+    // Build sorted list of dates from set
+    const sorted = Array.from(activeDateSet)
+      .map(s => new Date(`${s}T00:00:00`))
+      .sort((a, b) => a - b);
+    let longest = 0;
+    let run = 0;
+    let prev = null;
+    for (const dt of sorted) {
+      if (prev) {
+        const diff = Math.round((dt - prev) / (1000 * 60 * 60 * 24));
+        if (diff === 1) {
+          run += 1;
+        } else if (diff > 1) {
+          run = 1;
+        }
+      } else {
+        run = 1;
+      }
+      longest = Math.max(longest, run);
+      prev = dt;
+    }
+    // find most recent active day
+    const mostRecent = sorted.length ? sorted[sorted.length - 1] : null;
+    // current streak ending at most recent contribution day
+    let current = 0;
+    if (mostRecent) {
+      let Datee = new Date(mostRecent);
+      while (true) {
+        const y = Datee.getFullYear();
+        const m = String(Datee.getMonth() + 1).padStart(2, '0');
+        const d = String(Datee.getDate()).padStart(2, '0');
+        const key = `${y}-${m}-${d}`;
+        if (activeDateSet.has(key)) {
+          current += 1;
+          Datee.setDate(Datee.getDate() - 1);
+        } else {
+          break;
+        }
+      }
+    }
+    const lastCheckInDate = mostRecent
+      ? `${mostRecent.getFullYear()}-${String(mostRecent.getMonth() + 1).padStart(2, '0')}-${String(mostRecent.getDate()).padStart(2, '0')}`
+      : state.streak.lastCheckInDate;
+    return { current, longest, lastCheckInDate };
+  }
+
+  function toYMD(dateLike) {
+    const d = new Date(dateLike);
     const y = d.getFullYear();
     const m = String(d.getMonth() + 1).padStart(2, '0');
     const dd = String(d.getDate()).padStart(2, '0');
-    return `${y}-${m}-${dd}` === dayString;
+    return `${y}-${m}-${dd}`;
+  }
+
+  function extractActiveDates(payload) {
+    const active = new Set();
+    if (!payload) return active;
+    // Shape A (jogruber v4): { contributions: [{ date, count }] }
+    if (Array.isArray(payload.contributions)) {
+      for (const c of payload.contributions) {
+        const date = c?.date;
+        const count = Number(c?.count ?? c?.contributionCount ?? 0);
+        if (date && count > 0) active.add(String(date).slice(0, 10));
+      }
+    }
+    // Shape B: { years: [ { contributions: [{ date, count }] } ] }
+    if (Array.isArray(payload.years)) {
+      for (const y of payload.years) {
+        if (Array.isArray(y?.contributions)) {
+          for (const c of y.contributions) {
+            const date = c?.date;
+            const count = Number(c?.count ?? c?.contributionCount ?? 0);
+            if (date && count > 0) active.add(String(date).slice(0, 10));
+          }
+        }
+      }
+    }
+    // Shape C: calendar weeks/days
+    const weeks = payload?.calendar?.weeks || payload?.weeks || payload?.contributions?.weeks;
+    if (Array.isArray(weeks)) {
+      for (const w of weeks) {
+        const days = w?.days || w?.contributionDays || w;
+        if (Array.isArray(days)) {
+          for (const d of days) {
+            const date = d?.date || d?.weekday; // typically 'date'
+            const count = Number(d?.count ?? d?.contributionCount ?? d?.contributions ?? 0);
+            if (date && count > 0) active.add(String(date).slice(0, 10));
+          }
+        }
+      }
+    }
+    // Shape D (deno.dev): flat contributions array in payload.contributions
+    // already covered above; additionally, allow "data" wrapper
+    if (payload.data) {
+      const nested = extractActiveDates(payload.data);
+      nested.forEach(d => active.add(d));
+    }
+    // Normalize dates that may be timestamps
+    const normalized = new Set();
+    for (const d of active) {
+      normalized.add(/^\d{4}-\d{2}-\d{2}$/.test(d) ? d : toYMD(d));
+    }
+    return normalized;
   }
 
   async function syncFromGitHub() {
@@ -129,27 +219,21 @@ function App() {
     if (!username) return;
     setIsSyncing(true);
     try {
-      const resp = await fetch(`https://api.github.com/users/${encodeURIComponent(username)}/events/public`, {
-        headers: { 'Accept': 'application/vnd.github+json' }
-      });
-      if (!resp.ok) throw new Error('GitHub API error');
-      const events = await resp.json();
-      const hasPushToday = Array.isArray(events) && events.some(ev => ev && ev.type === 'PushEvent' && sameDayLocal(ev.created_at, today));
-
-      setState(s => {
-        let next = { ...s, github: { ...s.github, lastSyncDate: today, lastResult: hasPushToday ? 'commit-today' : 'none' } };
-        if (hasPushToday && s.streak.lastCheckInDate !== today) {
-          const last = s.streak.lastCheckInDate;
-          let current = 1;
-          if (last) {
-            const diff = daysBetween(last, today);
-            if (diff === 1) current = s.streak.current + 1; else current = 1;
-          }
-          const longest = Math.max(s.streak.longest, current);
-          next = { ...next, streak: { current, longest, lastCheckInDate: today }, xp: s.xp + 10 };
-        }
-        return next;
-      });
+      // Primary: jogruber API (stable JSON)
+      let resp = await fetch(`https://github-contributions-api.jogruber.de/v4/${encodeURIComponent(username)}?y=last`, { headers: { 'Accept': 'application/json' } });
+      let data = null;
+      if (resp.ok) {
+        data = await resp.json();
+      } else {
+        // Fallback: deno.dev API
+        const url2 = `https://github-contributions-api.deno.dev/${encodeURIComponent(username)}.json`;
+        const resp2 = await fetch(url2, { headers: { 'Accept': 'application/json' } });
+        if (!resp2.ok) throw new Error('Contrib API error');
+        data = await resp2.json();
+      }
+      const activeDates = extractActiveDates(data);
+      const streaks = computeStreaksFromDates(activeDates);
+      setState(s => ({ ...s, streaksFromGithub: true, streak: streaks, github: { ...s.github, lastSyncDate: today, lastResult: 'synced' } }));
     } catch (e) {
       setState(s => ({ ...s, github: { ...s.github, lastSyncDate: today, lastResult: 'error' } }));
     } finally {
@@ -170,7 +254,7 @@ function App() {
   }
 
   const todaysTasks = state.tasks.filter(t => t.date === today);
-  const petEmoji = getPetStageEmoji(state.xp);
+  const petEmoji = getPetStageEmoji(state.streak.current);
 
   return (
     <div className="App">
@@ -183,19 +267,22 @@ function App() {
           </div>
           <div className="stats">
             <div>
-              <strong>XP:</strong> {state.xp}
-            </div>
-            <div>
               <strong>Streak:</strong> {state.streak.current} day(s)
             </div>
             <div>
               <strong>Best:</strong> {state.streak.longest}
             </div>
+            {!state.github.username && (
+            <>
+              <button className="checkin" onClick={handleCheckIn}>
+                {state.streak.lastCheckInDate === today ? 'Checked In ✅' : 'Check In Today'}
+              </button>
+         
+            </>
+          )}
           </div>
-          <button className="checkin" onClick={handleCheckIn}>
-            {state.streak.lastCheckInDate === today ? 'Checked In ✅' : 'Check In Today'}
-          </button>
-          <small className="tip">Check in grants +10 XP.</small>
+        
+      
         </section>
 
         <section className="github-card">
@@ -217,7 +304,7 @@ function App() {
           {state.github.username ? (
             <div className="github-status">
               <div>
-                Status: {state.github.lastResult === 'commit-today' ? 'Found commits today ✅' : state.github.lastResult === 'none' ? 'No commits found today' : state.github.lastResult === 'error' ? 'Error contacting GitHub' : 'Not synced yet'}
+                Status: {state.github.lastResult === 'synced' ? 'Synced ✅' : state.github.lastResult === 'error' ? 'Error contacting GitHub' : 'Not synced yet'}
               </div>
               <a className="gh-link" href={`https://github.com/${encodeURIComponent(state.github.username)}`} target="_blank" rel="noreferrer">
                 View profile ↗
@@ -264,12 +351,12 @@ function App() {
                     />
                     <span>{task.text}</span>
                   </label>
-                  {task.done && <span className="badge">+2 XP</span>}
+                  {/* no XP badge, streak only */}
                 </li>
               ))}
             </ul>
           )}
-          <small className="tip">Completing a task once grants +2 XP.</small>
+          <small className="tip">Use tasks to track what you did; they don’t affect streak.</small>
         </section>
 
         <footer>
