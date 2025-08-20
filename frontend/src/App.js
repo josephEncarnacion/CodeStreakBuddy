@@ -11,14 +11,6 @@ function getTodayString() {
   return `${year}-${month}-${day}`;
 }
 
-function daysBetween(dateA, dateB) {
-  if (!dateA || !dateB) return null;
-  const start = new Date(`${dateA}T00:00:00`);
-  const end = new Date(`${dateB}T00:00:00`);
-  const ms = end - start;
-  return Math.round(ms / (1000 * 60 * 60 * 24));
-}
-
 function getPetStageEmoji(currentStreak) {
   if (currentStreak < 7) return '🐣'; // Baby: 0-6 days
   if (currentStreak < 21) return '🦊'; // Teen: 7-20 days
@@ -36,6 +28,9 @@ function App() {
   const [taskText, setTaskText] = React.useState('');
   const [githubUsernameInput, setGithubUsernameInput] = React.useState('');
   const [isSyncing, setIsSyncing] = React.useState(false);
+  const [taskFilter, setTaskFilter] = React.useState('today'); // 'today' | 'all'
+  const [editingTaskId, setEditingTaskId] = React.useState(null);
+  const [editingText, setEditingText] = React.useState('');
   const today = getTodayString();
 
   React.useEffect(() => {
@@ -65,22 +60,7 @@ function App() {
     }
   }, [state]);
 
-  function handleCheckIn() {
-    const last = state.streak.lastCheckInDate;
-    if (last === today) return; // already checked in today
-
-    let current = 1;
-    if (last) {
-      const diff = daysBetween(last, today);
-      if (diff === 1) current = state.streak.current + 1;
-      else current = 1;
-    }
-    const longest = Math.max(state.streak.longest, current);
-    setState(s => ({
-      ...s,
-      streak: { current, longest, lastCheckInDate: today }
-    }));
-  }
+  // Manual check-in removed; streak comes from GitHub sync
 
   function handleAddTask(e) {
     e.preventDefault();
@@ -105,6 +85,36 @@ function App() {
       });
       return { ...s, tasks };
     });
+  }
+
+  function deleteTask(taskId) {
+    setState(s => ({ ...s, tasks: s.tasks.filter(t => t.id !== taskId) }));
+  }
+
+  function startEdit(task) {
+    setEditingTaskId(task.id);
+    setEditingText(task.text);
+  }
+
+  function cancelEdit() {
+    setEditingTaskId(null);
+    setEditingText('');
+  }
+
+  function saveEdit() {
+    if (!editingTaskId) return;
+    const text = editingText.trim();
+    if (!text) return;
+    setState(s => ({
+      ...s,
+      tasks: s.tasks.map(t => (t.id === editingTaskId ? { ...t, text } : t))
+    }));
+    setEditingTaskId(null);
+    setEditingText('');
+  }
+
+  function clearCompleted() {
+    setState(s => ({ ...s, tasks: s.tasks.filter(t => !t.done) }));
   }
 
   function computeStreaksFromDates(activeDateSet) {
@@ -253,7 +263,7 @@ function App() {
     setState(s => ({ ...s, github: { ...s.github, username: githubUsernameInput.trim() } }));
   }
 
-  const todaysTasks = state.tasks.filter(t => t.date === today);
+  const tasksToShow = taskFilter === 'today' ? state.tasks.filter(t => t.date === today) : state.tasks;
   const petEmoji = getPetStageEmoji(state.streak.current);
 
   return (
@@ -261,103 +271,128 @@ function App() {
       <div className="container">
         <h1>CodeStreakBuddy</h1>
 
-        <section className="pet-card">
-          <div className="pet-emoji" aria-label="pet" title="Your Buddy">
-            {petEmoji}
-          </div>
-          <div className="stats">
-            <div>
-              <strong>Streak:</strong> {state.streak.current} day(s)
-            </div>
-            <div>
-              <strong>Best:</strong> {state.streak.longest}
-            </div>
-            {!state.github.username && (
-            <>
-              <button className="checkin" onClick={handleCheckIn}>
-                {state.streak.lastCheckInDate === today ? 'Checked In ✅' : 'Check In Today'}
-              </button>
-         
-            </>
-          )}
-          </div>
-        
-      
-        </section>
-
-        <section className="github-card">
-          <h2>GitHub</h2>
-          <form className="github-input-row" onSubmit={saveGithubUsername}>
-            <input
-              type="text"
-              placeholder="Your GitHub username"
-              value={githubUsernameInput}
-              onChange={(e) => setGithubUsernameInput(e.target.value)}
-            />
-            <button type="submit">Save</button>
-            {state.github.username ? (
-              <button type="button" onClick={syncFromGitHub} disabled={isSyncing}>
-                {isSyncing ? 'Syncing…' : 'Sync now'}
-              </button>
-            ) : null}
-          </form>
-          {state.github.username ? (
-            <div className="github-status">
-              <div>
-                Status: {state.github.lastResult === 'synced' ? 'Synced ✅' : state.github.lastResult === 'error' ? 'Error contacting GitHub' : 'Not synced yet'}
+        <div className="layout">
+          <aside className="sidebar">
+            <section className="pet-card">
+              <div className="pet-emoji" aria-label="pet" title="Your Buddy">
+                {petEmoji}
               </div>
-              <a className="gh-link" href={`https://github.com/${encodeURIComponent(state.github.username)}`} target="_blank" rel="noreferrer">
-                View profile ↗
-              </a>
-            </div>
-          ) : (
-            <div className="empty">Add your GitHub username to enable auto check-in.</div>
-          )}
+              <div className="stats">
+                <div>
+                  <strong>Streak:</strong> {state.streak.current} day(s)
+                </div>
+                <div>
+                  <strong>Best:</strong> {state.streak.longest}
+                </div>
+              </div>
+            </section>
+            <section className="github-card">
+              <h2>GitHub</h2>
+              <form className="github-input-row" onSubmit={saveGithubUsername}>
+                <input
+                  type="text"
+                  placeholder="Your GitHub username"
+                  value={githubUsernameInput}
+                  onChange={(e) => setGithubUsernameInput(e.target.value)}
+                />
+                <button type="submit">Save</button>
+                {state.github.username ? (
+                  <button type="button" onClick={syncFromGitHub} disabled={isSyncing}>
+                    {isSyncing ? 'Syncing…' : 'Sync now'}
+                  </button>
+                ) : null}
+              </form>
+              {state.github.username ? (
+                <div className="github-status">
+                  <div>
+                    Status: {state.github.lastResult === 'synced' ? 'Synced ✅' : state.github.lastResult === 'error' ? 'Error contacting GitHub' : 'Not synced yet'}
+                  </div>
+                  <a className="gh-link" href={`https://github.com/${encodeURIComponent(state.github.username)}`} target="_blank" rel="noreferrer">
+                    View profile ↗
+                  </a>
+                </div>
+              ) : (
+                <div className="empty">Add your GitHub username to enable auto check-in.</div>
+              )}
 
-          {state.github.username ? (
-            <div className="gh-chart-wrap">
-              <img
-                className="gh-chart"
-                src={`https://ghchart.rshah.org/4ade80/${encodeURIComponent(state.github.username)}`}
-                alt="GitHub contribution chart"
-              />
-              <small className="tip">Chart courtesy of ghchart.rshah.org</small>
-            </div>
-          ) : null}
-        </section>
+              {state.github.username ? (
+                <div className="gh-chart-wrap">
+                  <img
+                    className="gh-chart"
+                    src={`https://ghchart.rshah.org/4ade80/${encodeURIComponent(state.github.username)}`}
+                    alt="GitHub contribution chart"
+                  />
+                  <small className="tip">Chart courtesy of ghchart.rshah.org</small>
+                </div>
+              ) : null}
+            </section>
+          </aside>
+            <main className="main">
+            <section className="tasks-card">
+              <h2>Tasks</h2>
+              <form onSubmit={handleAddTask} className="task-form">
+                <input
+                  type="text"
+                  placeholder="What did you work on?"
+                  value={taskText}
+                  onChange={(e) => setTaskText(e.target.value)}
+                />
+                <button type="submit">Add</button>
+              </form>
 
-        <section className="tasks-card">
-          <h2>Today&apos;s Tasks</h2>
-          <form onSubmit={handleAddTask} className="task-form">
-            <input
-              type="text"
-              placeholder="What did you work on?"
-              value={taskText}
-              onChange={(e) => setTaskText(e.target.value)}
-            />
-            <button type="submit">Add</button>
-          </form>
-          {todaysTasks.length === 0 ? (
-            <div className="empty">No tasks yet. Add one!</div>
-          ) : (
-            <ul className="task-list">
-              {todaysTasks.map(task => (
-                <li key={task.id} className={task.done ? 'done' : ''}>
-                  <label>
-                    <input
-                      type="checkbox"
-                      checked={task.done}
-                      onChange={() => toggleTask(task.id)}
-                    />
-                    <span>{task.text}</span>
-                  </label>
-                  {/* no XP badge, streak only */}
-                </li>
-              ))}
-            </ul>
-          )}
-          <small className="tip">Use tasks to track what you did; they don’t affect streak.</small>
-        </section>
+              <div className="task-filters">
+                <div className="filter-buttons">
+                  <button type="button" className={taskFilter === 'today' ? 'active' : ''} onClick={() => setTaskFilter('today')}>Today</button>
+                  <button type="button" className={taskFilter === 'all' ? 'active' : ''} onClick={() => setTaskFilter('all')}>All</button>
+                </div>
+                <button type="button" className="clear-completed" onClick={clearCompleted} disabled={state.tasks.every(t => !t.done)}>Clear completed</button>
+              </div>
+
+              {tasksToShow.length === 0 ? (
+                <div className="empty">No tasks yet. Add one!</div>
+              ) : (
+                <ul className="task-list">
+                  {tasksToShow.map(task => (
+                    <li key={task.id} className={task.done ? 'done' : ''}>
+                      <label>
+                        <input
+                          type="checkbox"
+                          checked={task.done}
+                          onChange={() => toggleTask(task.id)}
+                        />
+                        {editingTaskId === task.id ? (
+                          <input
+                            type="text"
+                            value={editingText}
+                            onChange={(e) => setEditingText(e.target.value)}
+                            onKeyDown={(e) => { if (e.key === 'Enter') saveEdit(); if (e.key === 'Escape') cancelEdit(); }}
+                            autoFocus
+                          />
+                        ) : (
+                          <span>{task.text}{task.date !== today && taskFilter === 'all' ? ` · ${task.date}` : ''}</span>
+                        )}
+                      </label>
+                      <div className="task-actions">
+                        {editingTaskId === task.id ? (
+                          <>
+                            <button type="button" onClick={saveEdit}>Save</button>
+                            <button type="button" className="danger" onClick={cancelEdit}>Cancel</button>
+                          </>
+                        ) : (
+                          <>
+                            <button type="button" onClick={() => startEdit(task)}>Edit</button>
+                            <button type="button" className="danger" onClick={() => deleteTask(task.id)}>Delete</button>
+                          </>
+                        )}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <small className="tip">Use tasks to track what you did; they don’t affect streak.</small>
+            </section>
+          </main>
+        </div>
 
         <footer>
           <span>Local only · Your data stays in your browser</span>
